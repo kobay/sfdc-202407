@@ -1,0 +1,46 @@
+<apex:page
+  standardController="Construction__c"
+  extensions="ConstructionVFController"
+  lightningStylesheets="false"
+>
+  <head>
+    <meta charset="utf-8" />
+    <title>Box File Selection</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn01.boxcdn.net/platform/elements/20.0.0/ja-JP/explorer.css"
+    />
+  </head>
+  <!-- <apex:includeScript value="{!$Resource.BoxExplorerJS}" /> -->
+  <!-- <apex:stylesheet value="{!$Resource.BoxExplorerCSS}" /> -->
+
+  <apex:pageBlock title="info">
+    <h1>Record ID: {!recordId}</h1>
+    <h1>accessToken: {!accessToken}</h1>
+    <h1>folderId: {!folderId}</h1>
+  </apex:pageBlock>
+
+  <div class="container" style="height: 100%; width: 100%"></div>
+  <script
+    src="https://cdn01.boxcdn.net/platform/elements/20.0.0/ja-JP/explorer.js"
+  ></script>
+  <script>
+    // window.onload = function () {
+
+    console.log("Box", Box);
+    console.log("accessToken: {!accessToken}");
+    console.log("folderId: {!folderId}");
+
+    const folderId = "{!folderId}";
+    const accessToken = "{!accessToken}";
+
+    try {
+      const buie = new Box.ContentExplorer();
+      buie.show(folderId, accessToken, {
+        container: ".container"
+      });
+    } catch (e) {
+      console.log("Error", e);
+    }
+  </script>
+</apex:page>
