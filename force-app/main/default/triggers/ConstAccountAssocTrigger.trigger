@@ -3,8 +3,8 @@ trigger ConstAccountAssocTrigger on ConstAccountAssoc__c(
   before delete
 ) {
   if (Trigger.isInsert) {
-    ConstAccountAssocHandler.handle(Trigger.newMap, true);
+    ConstAccountAssocHandler.handleCreate(Trigger.newMap);
   } else if (Trigger.isDelete) {
-    ConstAccountAssocHandler.handle(Trigger.oldMap, false);
+    ConstAccountAssocHandler.handleDelete(Trigger.oldMap);
   }
 }

@@ -1,16 +1,10 @@
-public class ConstAccountAssocHandler {
-  public static void handle(
-    // List<ConstAccountAssoc__c> records,
-    Map<ID, ConstAccountAssoc__c> recordsMap,
-    Boolean isCreate
-  ) {
+public without sharing class ConstAccountAssocHandler {
+  public static void handleCreate(Map<ID, ConstAccountAssoc__c> recordsMap) {
     Set<Id> accountIds = new Set<Id>();
-    // Set<Id> constructionIds = new Set<Id>();
 
     // Setにいれて重複排除
     for (ConstAccountAssoc__c assoc : recordsMap.values()) {
       accountIds.add(assoc.Account__c);
-      //   constructionIds.add(assoc.Construction__c);
     }
 
     Map<Id, Account> accounts = new Map<Id, Account>(
@@ -18,11 +12,38 @@ public class ConstAccountAssocHandler {
     );
     System.debug('■■■ accounts ' + JSON.serializePretty(accounts));
 
+    // 共有設定を作る
+    Map<Id, Set<Id>> accountToPartnerUserIds = getPartnerUsersByAccount(
+      accountIds
+    );
+    System.debug(
+      '■■■ accountToPartnerUserIds ' +
+      JSON.serializePretty(accountToPartnerUserIds)
+    );
+
+    List<Construction__Share> sharesToInsert = new List<Construction__Share>();
+
+    for (ConstAccountAssoc__c assoc : recordsMap.values()) {
+      Set<Id> partnerUserIds = accountToPartnerUserIds.get(assoc.Account__c);
+      if (partnerUserIds != null && !partnerUserIds.isEmpty()) {
+        for (Id userId : partnerUserIds) {
+          Construction__Share share = new Construction__Share();
+          share.ParentId = assoc.Construction__c;
+          share.UserOrGroupId = userId;
+          share.AccessLevel = 'Read';
+          sharesToInsert.add(share);
+        }
+      }
+    }
+    System.debug('■■■ sharesToInsert ' + JSON.serializePretty(sharesToInsert));
+    if (!sharesToInsert.isEmpty()) {
+      Database.insert(sharesToInsert, false);
+    }
+
+    // Box上にコラボレーションを作成
     box.Toolkit toolkit = new box.Toolkit();
 
-    // ConstAccountAssoc（追加または削除）対象レコードをループ
     for (Id constAccountAssocId : recordsMap.keySet()) {
-      // 工事IDを取得
       Id constructionId = recordsMap.get(constAccountAssocId).Construction__c;
       Id accountId = recordsMap.get(constAccountAssocId).Account__c;
       String boxCollaborationId = recordsMap.get(constAccountAssocId)
@@ -46,17 +67,86 @@ public class ConstAccountAssocHandler {
         System.debug('■■■ accountId: ' + accountId + ' has no box group id ');
         continue;
       }
-      if (isCreate) {
-        // futureを非同期でコール
-        createCollaboration(boxGroupId, boxFolderId, constAccountAssocId);
+
+      // futureを非同期でコール
+      createCollaboration(boxGroupId, boxFolderId, constAccountAssocId);
+    }
+  }
+
+  public static void handleDelete(Map<ID, ConstAccountAssoc__c> recordsMap) {
+    Set<Id> accountIds = new Set<Id>();
+    Set<Id> constructionIds = new Set<Id>();
+
+    // Setにいれて重複排除
+    for (ConstAccountAssoc__c assoc : recordsMap.values()) {
+      accountIds.add(assoc.Account__c);
+      constructionIds.add(assoc.Construction__c);
+    }
+
+    // 関連するパートナーユーザーを取得
+    Map<Id, Set<Id>> accountToPartnerUserIds = getPartnerUsersByAccount(
+      accountIds
+    );
+
+    System.debug(
+      '■■■ accountToPartnerUserIds ' +
+      JSON.serializePretty(accountToPartnerUserIds)
+    );
+
+    Set<Id> partnerUserIds = new Set<Id>();
+    for (Set<Id> ids : accountToPartnerUserIds.values()) {
+      partnerUserIds.addAll(ids);
+    }
+
+    // 削除すべき共有レコードを特定
+    List<Construction__Share> sharesToDelete = [
+      SELECT Id, ParentId
+      FROM Construction__Share
+      WHERE
+        ParentId IN :constructionIds
+        AND UserOrGroupId IN :partnerUserIds
+        AND RowCause = 'Manual'
+    ];
+
+    System.debug('■■■ sharesToDelete ' + JSON.serializePretty(sharesToDelete));
+
+    if (!sharesToDelete.isEmpty()) {
+      Database.delete(sharesToDelete, false);
+    }
+
+    // Box上のコラボレーションを削除
+    for (Id constAccountAssocId : recordsMap.keySet()) {
+      String boxCollaborationId = recordsMap.get(constAccountAssocId)
+        .Box_Collaboration_Id__c;
+
+      System.debug('■■■ boxCollaborationId ' + boxCollaborationId);
+
+      if (boxCollaborationId != null) {
+        deleteCollaboration(boxCollaborationId);
       } else {
-        if (boxCollaborationId != null) {
-          deleteCollaboration(boxCollaborationId);
-        } else {
-          System.debug('■■■ boxCollaborationId is null');
-        }
+        System.debug('■■■ boxCollaborationId is null');
       }
     }
+  }
+
+  private static Map<Id, Set<Id>> getPartnerUsersByAccount(Set<Id> accountIds) {
+    Map<Id, Set<Id>> accountToPartnerUserIds = new Map<Id, Set<Id>>();
+
+    for (User u : [
+      SELECT ContactId, Contact.AccountId
+      FROM User
+      WHERE
+        Contact.AccountId IN :accountIds
+        AND IsActive = TRUE
+        AND UserType = 'PowerPartner'
+    ]) {
+      if (!accountToPartnerUserIds.containsKey(u.Contact.AccountId)) {
+        accountToPartnerUserIds.put(u.Contact.AccountId, new Set<Id>());
+      }
+      accountToPartnerUserIds.get(u.Contact.AccountId).add(u.Id);
+    }
+
+    return accountToPartnerUserIds;
   }
 
   @future(callout=true)
