@@ -12,15 +12,28 @@ public with sharing class BoxAPIManager {
     login();
   }
 
-  private void login() {
+  public BoxAPIManager(String userId) {
+    login(userId);
+  }
+
+  public void login() {
+    loginCommon('enterprise', BOX_ENTERPRISE_ID);
+  }
+
+  private void login(String userId) {
+    loginCommon('user', userId);
+  }
+
+  private void loginCommon(String subjectType, String subjectId) {
     try {
       HttpRequest request = new HttpRequest();
+
       Map<String, String> bodyMap = new Map<String, String>();
       bodyMap.put('client_id', BOX_CLIENT_ID);
       bodyMap.put('client_secret', BOX_CLIENT_SECRET);
       bodyMap.put('grant_type', 'client_credentials');
-      bodyMap.put('box_subject_type', 'enterprise');
-      bodyMap.put('box_subject_id', BOX_ENTERPRISE_ID);
+      bodyMap.put('box_subject_type', subjectType);
+      bodyMap.put('box_subject_id', subjectId);
 
       request.setMethod('POST');
       request.setEndpoint('https://api.box.com/oauth2/token');
@@ -35,8 +48,42 @@ public with sharing class BoxAPIManager {
 
       this.accessToken = (String) results.get('access_token');
     } catch (Exception e) {
+      System.debug('Error logging in to Box: ' + e.getMessage());
       throw new AuraHandledException(e.getMessage());
     }
+  }
+
+  public String createCollaboration(
+    String groupId,
+    String folderId,
+    String role
+  ) {
+    Map<String, Object> itemMap = new Map<String, Object>();
+    itemMap.put('type', 'folder');
+    itemMap.put('id', folderId);
+
+    Map<String, Object> accessibleByMap = new Map<String, Object>();
+    accessibleByMap.put('type', 'group');
+    accessibleByMap.put('id', groupId);
+
+    Map<String, Object> bodyMap = new Map<String, Object>();
+    bodyMap.put('item', itemMap);
+    bodyMap.put('accessible_by', accessibleByMap);
+    bodyMap.put('role', role);
+
+    Map<String, Object> results = send('POST', 'collaborations', bodyMap);
+
+    return (String) results.get('id');
+  }
+
+  public String deleteCollaboration(String collaborationId) {
+    Map<String, Object> results = send(
+      'DELETE',
+      'collaborations/' + collaborationId,
+      null
+    );
+
+    return (String) results.get('id');
   }
 
   public String createAppUser(String name, String sfdcUserId) {
