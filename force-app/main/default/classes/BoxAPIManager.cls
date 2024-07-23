@@ -86,6 +86,19 @@ public with sharing class BoxAPIManager {
     return (String) results.get('id');
   }
 
+  public String updateCollaboration(String collaborationId, String role) {
+    Map<String, Object> bodyMap = new Map<String, Object>();
+    bodyMap.put('role', role);
+
+    Map<String, Object> results = send(
+      'PUT',
+      'collaborations/' + collaborationId,
+      bodyMap
+    );
+
+    return (String) results.get('id');
+  }
+
   public String createAppUser(String name, String sfdcUserId) {
     Map<String, Object> bodyMap = new Map<String, Object>();
     bodyMap.put('external_app_user_id', sfdcUserId);
